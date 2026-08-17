@@ -72,10 +72,10 @@
   <div class="card">
     <!-- Signed-out view -->
     <div id="signed-out">
-      <h3 style="margin-top:0;">Welcome inida back to uk </h3>
+      <h3 style="margin-top:0;">Welcome Back</h3>
       <button id="btn-google" class="google-btn">
         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
-        Sign in w6767ith Google
+        Sign in with Google
       </button>
     </div>
 
@@ -112,7 +112,8 @@
       measurementId: "G-SMQJ5R036Y"
     };
 
-    const API_BASE = window.location.origin;
+    // FIXED: Render Backend URL yahan set kar di hai
+    const API_BASE = "https://pnpm-4cm8.onrender.com";
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -125,19 +126,26 @@
     const nameDiv = document.getElementById('name');
     const emailDiv = document.getElementById('email');
 
-    // Detect mobile / in-app browsers where popups get blocked
+    // Mobile detect block
     const isMobile = /Android|iPhone|iPad|iPod|Mobile|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
 
     async function syncWithBackend(user) {
-      const idToken = await user.getIdToken();
-      const response = await fetch(`${API_BASE}/api/auth/google-sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        statusDiv.innerText = 'Backend sync failed: ' + data.message;
+      try {
+        const idToken = await user.getIdToken();
+        const response = await fetch(`${API_BASE}/api/auth/google-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        });
+        const data = await response.json();
+        
+        if (!response.ok) {
+          statusDiv.innerText = 'Backend sync failed: ' + data.message;
+        } else {
+          console.log('MongoDB Saved:', data);
+        }
+      } catch (error) {
+        statusDiv.innerText = 'Server Error: ' + error.message;
       }
     }
 
@@ -146,7 +154,6 @@
       statusDiv.innerText = '';
       try {
         if (isMobile) {
-          // Redirect flow: page navigates away, comes back, handled below by getRedirectResult
           await signInWithRedirect(auth, provider);
         } else {
           const result = await signInWithPopup(auth, provider);
@@ -157,7 +164,7 @@
       }
     });
 
-    // Handles the return trip after signInWithRedirect (mobile flow)
+    // Mobile Redirect flow result
     getRedirectResult(auth)
       .then(async (result) => {
         if (result && result.user) {
@@ -177,7 +184,7 @@
       }
     });
 
-    // Reflect auth state on screen
+    // Auth State Change listener
     onAuthStateChanged(auth, (user) => {
       if (user) {
         avatarImg.src = user.photoURL || 'https://www.gravatar.com/avatar/?d=mp&f=y';
