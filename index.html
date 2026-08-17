@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Google Auth</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Auth Sync</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -63,7 +64,7 @@
     }
     .logout-btn:hover { background: #b7271d; }
 
-    .msg { margin-top: 14px; color: #b7271d; font-size: 13px; }
+    .msg { margin-top: 14px; color: #b7271d; font-size: 13px; word-break: break-word; }
     .hidden { display: none; }
   </style>
 </head>
@@ -112,7 +113,7 @@
       measurementId: "G-SMQJ5R036Y"
     };
 
-    // FIXED: Render Backend URL yahan set kar di hai
+    // Render Backend API URL
     const API_BASE = "https://pnpm-4cm8.onrender.com";
 
     const app = initializeApp(firebaseConfig);
@@ -126,30 +127,48 @@
     const nameDiv = document.getElementById('name');
     const emailDiv = document.getElementById('email');
 
-    // Mobile detect block
+    // Mobile Detection Flag
     const isMobile = /Android|iPhone|iPad|iPod|Mobile|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
+    let isSyncing = false;
 
+    // Direct MongoDB Sync Function
     async function syncWithBackend(user) {
+      if (isSyncing) return;
+      isSyncing = true;
+      statusDiv.style.color = '#333';
+      statusDiv.innerText = 'Syncing user to MongoDB Atlas...';
+
       try {
-        const idToken = await user.getIdToken();
+        const idToken = await user.getIdToken(true);
         const response = await fetch(`${API_BASE}/api/auth/google-sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idToken })
         });
-        const data = await response.json();
-        
-        if (!response.ok) {
-          statusDiv.innerText = 'Backend sync failed: ' + data.message;
-        } else {
-          console.log('MongoDB Saved:', data);
+
+        // Safely parse non-JSON responses (prevents Unexpected token '<' crash)
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Render Backend Returned Non-JSON response (Server Awakening/Error).");
         }
-      } catch (error) {
-        statusDiv.innerText = 'Server Error: ' + error.message;
+
+        const data = await response.json();
+        if (!response.ok) {
+          statusDiv.style.color = '#b7271d';
+          statusDiv.innerText = 'DB Error: ' + data.message;
+        } else {
+          statusDiv.style.color = 'green';
+          statusDiv.innerText = 'Successfully saved to MongoDB Atlas!';
+        }
+      } catch (err) {
+        statusDiv.style.color = '#b7271d';
+        statusDiv.innerText = 'Error: ' + err.message;
+      } finally {
+        isSyncing = false;
       }
     }
 
-    // Sign in with Google
+    // Google Sign-In Click Trigger
     document.getElementById('btn-google').addEventListener('click', async () => {
       statusDiv.innerText = '';
       try {
@@ -160,11 +179,12 @@
           await syncWithBackend(result.user);
         }
       } catch (err) {
+        statusDiv.style.color = '#b7271d';
         statusDiv.innerText = 'Error: ' + err.message;
       }
     });
 
-    // Mobile Redirect flow result
+    // Mobile Redirect Execution Point (Saves user to MongoDB on Mobile)
     getRedirectResult(auth)
       .then(async (result) => {
         if (result && result.user) {
@@ -172,6 +192,7 @@
         }
       })
       .catch((err) => {
+        statusDiv.style.color = '#b7271d';
         statusDiv.innerText = 'Error: ' + err.message;
       });
 
@@ -180,11 +201,12 @@
       try {
         await signOut(auth);
       } catch (err) {
+        statusDiv.style.color = '#b7271d';
         statusDiv.innerText = 'Error: ' + err.message;
       }
     });
 
-    // Auth State Change listener
+    // Pure UI Update (No Duplicate API Calls Inside)
     onAuthStateChanged(auth, (user) => {
       if (user) {
         avatarImg.src = user.photoURL || 'https://www.gravatar.com/avatar/?d=mp&f=y';
@@ -195,6 +217,7 @@
       } else {
         signedOutView.classList.remove('hidden');
         signedInView.classList.add('hidden');
+        statusDiv.innerText = '';
       }
     });
   </script>

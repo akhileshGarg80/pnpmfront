@@ -2,3 +2,11 @@ firebase login
 
 
 firebase init hosting:github
+
+
+
+git add .
+
+git commit -m"dfsd"
+
+git push
