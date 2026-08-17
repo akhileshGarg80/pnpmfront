@@ -41,7 +41,16 @@
     .google-btn:hover { background: #f7f8f8; }
     .google-btn img { width: 20px; height: 20px; }
 
-    .name { font-size: 20px; font-weight: 600; color: #222; margin-bottom: 20px; }
+    .avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      object-fit: cover;
+      margin-bottom: 14px;
+      border: 2px solid #eee;
+    }
+    .name { font-size: 18px; font-weight: 600; color: #222; margin-bottom: 4px; }
+    .email { font-size: 14px; color: #666; margin-bottom: 20px; }
 
     .logout-btn {
       width: 100%;
@@ -71,9 +80,11 @@
       </button>
     </div>
 
-    <!-- Signed-in view (Only Username display UI) -->
+    <!-- Signed-in view -->
     <div id="signed-in" class="hidden">
+      <img id="avatar" class="avatar" src="" alt="Avatar">
       <div id="name" class="name"></div>
+      <div id="email" class="email"></div>
       <button id="btn-logout" class="logout-btn">Logout</button>
     </div>
 
@@ -102,6 +113,7 @@
       measurementId: "G-SMQJ5R036Y"
     };
 
+    // Render Backend API URL
     const API_BASE = "https://pnpm-4cm8.onrender.com";
 
     const app = initializeApp(firebaseConfig);
@@ -111,11 +123,15 @@
     const signedOutView = document.getElementById('signed-out');
     const signedInView = document.getElementById('signed-in');
     const statusDiv = document.getElementById('status');
+    const avatarImg = document.getElementById('avatar');
     const nameDiv = document.getElementById('name');
+    const emailDiv = document.getElementById('email');
 
+    // Mobile Detection Flag
     const isMobile = /Android|iPhone|iPad|iPod|Mobile|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
     let isSyncing = false;
 
+    // Direct MongoDB Sync Function
     async function syncWithBackend(user) {
       if (isSyncing) return;
       isSyncing = true;
@@ -130,9 +146,10 @@
           body: JSON.stringify({ idToken })
         });
 
+        // Safely parse non-JSON responses (prevents Unexpected token '<' crash)
         const contentType = response.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
-          throw new Error("Render Backend Returned Non-JSON response.");
+          throw new Error("Render Backend Returned Non-JSON response (Server Awakening/Error).");
         }
 
         const data = await response.json();
@@ -142,11 +159,6 @@
         } else {
           statusDiv.style.color = 'green';
           statusDiv.innerText = 'Successfully saved to MongoDB Atlas!';
-          
-          // Render backend-provided display name
-          if (data.user && data.user.username) {
-            nameDiv.innerText = data.user.username;
-          }
         }
       } catch (err) {
         statusDiv.style.color = '#b7271d';
@@ -156,6 +168,7 @@
       }
     }
 
+    // Google Sign-In Click Trigger
     document.getElementById('btn-google').addEventListener('click', async () => {
       statusDiv.innerText = '';
       try {
@@ -171,6 +184,7 @@
       }
     });
 
+    // Mobile Redirect Execution Point (Saves user to MongoDB on Mobile)
     getRedirectResult(auth)
       .then(async (result) => {
         if (result && result.user) {
@@ -182,6 +196,7 @@
         statusDiv.innerText = 'Error: ' + err.message;
       });
 
+    // Logout
     document.getElementById('btn-logout').addEventListener('click', async () => {
       try {
         await signOut(auth);
@@ -191,10 +206,12 @@
       }
     });
 
-    // Pure UI Update (Sirf Username dikhega)
+    // Pure UI Update (No Duplicate API Calls Inside)
     onAuthStateChanged(auth, (user) => {
       if (user) {
+        avatarImg.src = user.photoURL || 'https://www.gravatar.com/avatar/?d=mp&f=y';
         nameDiv.innerText = user.displayName || 'User';
+        emailDiv.innerText = user.email || '';
         signedOutView.classList.add('hidden');
         signedInView.classList.remove('hidden');
       } else {
