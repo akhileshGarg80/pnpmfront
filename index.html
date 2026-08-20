@@ -582,7 +582,19 @@
     }
 
     log(`Auth state changed — ${user.email}`);
-    await user.reload(); // fetch latest verification status
+
+    // FIX: user.reload() can throw on mobile right after a redirect
+    // (page just navigated back, network/cookies/indexedDB not fully
+    // settled yet — especially in mobile Chrome/Safari/in-app browsers).
+    // Previously this was un-caught, so an error here silently killed
+    // the whole callback and neither syncWithBackend() nor showError()
+    // ever ran — the UI just looked stuck. Now we catch it and fall
+    // back to the cached user object instead of aborting the flow.
+    try {
+      await user.reload();
+    } catch (err) {
+      log("user.reload() failed, continuing with cached user data — " + err.message, "err");
+    }
 
     if (user.emailVerified) {
       log("Email verified. Logging in automatically…", "ok");
