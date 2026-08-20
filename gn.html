@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Auth Sync</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #f4f4f9;
+    }
+    .card {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      max-width: 360px;
+      width: 90%;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      text-align: center;
+      position: relative;
+    }
+    .google-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 12px 16px;
+      background: white;
+      color: #3c4043;
+      border: 1px solid #dadce0;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .google-btn:hover { background: #f7f8f8; }
+    .google-btn img { width: 20px; height: 20px; }
+
+    .name { font-size: 20px; font-weight: 600; color: #222; margin-bottom: 20px; }
+
+    .logout-btn {
+      width: 100%;
+      padding: 10px 16px;
+      background: #d93025;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .logout-btn:hover { background: #b7271d; }
+
+    .msg { margin-top: 14px; color: #b7271d; font-size: 13px; word-break: break-word; }
+    .hidden { display: none !important; }
+
+    /* Custom Spinner / Loader CSS */
+    .loader-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 0;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #4285f4;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .loading-text {
+      font-size: 14px;
+      color: #555;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <!-- 1. Loader View (By default active jab page load ya sync hoga) -->
+    <div id="loader-view" class="loader-container">
+      <div class="spinner"></div>
+      <div id="loader-text" class="loading-text">Checking authentication...</div>
+    </div>
+
+    <!-- 2. Signed-out view -->
+    <div id="signed-out" class="hidden">
+      <h3 style="margin-top:0;">Welcome Back</h3>
+      <button id="btn-google" class="google-btn">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+        Sign in with Google
+      </button>
+    </div>
+
+    <!-- 3. Signed-in view (Only Username) -->
+    <div id="signed-in" class="hidden">
+      <div id="name" class="name"></div>
+      <button id="btn-logout" class="logout-btn">Logout</button>
+    </div>
+
+    <div id="status" class="msg"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signInWithRedirect,
+      getRedirectResult,
+      onAuthStateChanged,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDsbCw8uavQ55SuG0M5rfz4HtjqcUYO0Pk",
+      authDomain: "pnpmbackend.firebaseapp.com",
+      projectId: "pnpmbackend",
+      storageBucket: "pnpmbackend.firebasestorage.app",
+      messagingSenderId: "801262545637",
+      appId: "1:801262545637:web:691ba3e5a6d2691b97420c",
+      measurementId: "G-SMQJ5R036Y"
+    };
+
+    const API_BASE = "https://pnpm-4cm8.onrender.com";
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    const loaderView = document.getElementById('loader-view');
+    const loaderText = document.getElementById('loader-text');
+    const signedOutView = document.getElementById('signed-out');
+    const signedInView = document.getElementById('signed-in');
+    const statusDiv = document.getElementById('status');
+    const nameDiv = document.getElementById('name');
+
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile|Instagram|FBAN|FBAV|Line\//i.test(navigator.userAgent);
+    let isSyncing = false;
+
+    // Helper functions for UI views
+    function showLoader(text = "Loading...") {
+      loaderText.innerText = text;
+      loaderView.classList.remove('hidden');
+      signedOutView.classList.add('hidden');
+      signedInView.classList.add('hidden');
+    }
+
+    function showSignedIn(username) {
+      nameDiv.innerText = username;
+      loaderView.classList.add('hidden');
+      signedOutView.classList.add('hidden');
+      signedInView.classList.remove('hidden');
+    }
+
+    function showSignedOut() {
+      loaderView.classList.add('hidden');
+      signedInView.classList.add('hidden');
+      signedOutView.classList.remove('hidden');
+      statusDiv.innerText = '';
+    }
+
+    // Direct MongoDB Sync Function
+    async function syncWithBackend(user) {
+      if (isSyncing) return;
+      isSyncing = true;
+      showLoader("Syncing user to MongoDB Atlas...");
+
+      try {
+        const idToken = await user.getIdToken(true);
+        const response = await fetch(`${API_BASE}/api/auth/google-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        });
+
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error("Render Backend Returned Non-JSON response (Server Awakening).");
+        }
+
+        const data = await response.json();
+        if (!response.ok) {
+          showSignedOut();
+          statusDiv.style.color = '#b7271d';
+          statusDiv.innerText = 'DB Error: ' + data.message;
+        } else {
+          statusDiv.style.color = 'green';
+          statusDiv.innerText = 'Successfully saved to MongoDB Atlas!';
+          showSignedIn(data.user?.username || user.displayName || 'User');
+        }
+      } catch (err) {
+        showSignedOut();
+        statusDiv.style.color = '#b7271d';
+        statusDiv.innerText = 'Error: ' + err.message;
+      } finally {
+        isSyncing = false;
+      }
+    }
+
+    // Google Sign-In Click Trigger
+    document.getElementById('btn-google').addEventListener('click', async () => {
+      statusDiv.innerText = '';
+      try {
+        if (isMobile) {
+          showLoader("Redirecting to Google...");
+          await signInWithRedirect(auth, provider);
+        } else {
+          showLoader("Opening Google Sign-In...");
+          const result = await signInWithPopup(auth, provider);
+          await syncWithBackend(result.user);
+        }
+      } catch (err) {
+        showSignedOut();
+        statusDiv.style.color = '#b7271d';
+        statusDiv.innerText = 'Error: ' + err.message;
+      }
+    });
+
+    // Mobile Redirect Handling
+    getRedirectResult(auth)
+      .then(async (result) => {
+        if (result && result.user) {
+          await syncWithBackend(result.user);
+        }
+      })
+      .catch((err) => {
+        showSignedOut();
+        statusDiv.style.color = '#b7271d';
+        statusDiv.innerText = 'Error: ' + err.message;
+      });
+
+    // Logout Trigger
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      try {
+        showLoader("Logging out...");
+        await signOut(auth);
+      } catch (err) {
+        statusDiv.style.color = '#b7271d';
+        statusDiv.innerText = 'Error: ' + err.message;
+      }
+    });
+
+    // Firebase Auth State Tracker
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        if (!isSyncing) {
+          await syncWithBackend(user);
+        }
+      } else {
+        showSignedOut();
+      }
+    });
+  </script>
+</body>
+</html>
